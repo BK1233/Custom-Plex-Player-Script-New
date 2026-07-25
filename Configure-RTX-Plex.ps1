@@ -218,13 +218,29 @@ video-sync=display-resample
     }
 
     # Deploy autovsr_rtxhdr.lua
-    $luaSource = Join-Path $PSScriptRoot "autovsr_rtxhdr.lua"
-    if (Test-Path $luaSource) {
-        $luaDest = Join-Path $scriptsDir "autovsr_rtxhdr.lua"
-        Write-Log "Copying autovsr_rtxhdr.lua to scripts folder: '$luaDest'" -Level SUCCESS
+    # Fallback to web download if executing as a remote pipeline/one-liner where PSScriptRoot is null/empty
+    $luaDest = Join-Path $scriptsDir "autovsr_rtxhdr.lua"
+    $luaSource = $null
+
+    if (-not [string]::IsNullOrEmpty($PSScriptRoot)) {
+        $potentialSource = Join-Path $PSScriptRoot "autovsr_rtxhdr.lua"
+        if (Test-Path $potentialSource) {
+            $luaSource = $potentialSource
+        }
+    }
+
+    if ($null -ne $luaSource) {
+        Write-Log "Copying local autovsr_rtxhdr.lua to scripts folder: '$luaDest'" -Level SUCCESS
         Copy-Item -Path $luaSource -Destination $luaDest -Force
     } else {
-        Write-Log "Lua script source 'autovsr_rtxhdr.lua' not found in script path. Ensure it's in the same directory." -Level ERROR
+        Write-Log "No local script source found (PSScriptRoot is empty/remote execution). Fetching autovsr_rtxhdr.lua directly from GitHub..." -Level INFO
+        try {
+            $rawLuaUrl = "https://raw.githubusercontent.com/BK1233/Custom-Plex-Player-Script-New/main/autovsr_rtxhdr.lua"
+            Invoke-WebRequest -Uri $rawLuaUrl -OutFile $luaDest -UseBasicParsing
+            Write-Log "Successfully downloaded and installed autovsr_rtxhdr.lua to '$luaDest'" -Level SUCCESS
+        } catch {
+            Write-Log "Failed to download autovsr_rtxhdr.lua: $_" -Level ERROR
+        }
     }
 }
 
