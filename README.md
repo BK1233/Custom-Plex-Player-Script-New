@@ -7,6 +7,18 @@ This repository provides an automated, dynamic solution to turn your standard **
 
 ---
 
+### 🚀 Quick Run (No Clone / Download Required)
+
+To configure your Plex players instantly without downloading or cloning this repository, simply open **PowerShell as Administrator** and copy/paste the following command:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; Invoke-Expression (Invoke-RestMethod -Uri "https://raw.githubusercontent.com/anthonybaldwin/Custom-Plex-Player-Script-New/main/Configure-RTX-Plex.ps1" -UseBasicParsing)
+```
+
+*(Note: If you are running a custom branch, you can replace `/main/` in the URL with your branch name.)*
+
+---
+
 ### Features & Dynamic Automation
 
 - **`autovsr_rtxhdr.lua`**:
@@ -42,7 +54,9 @@ This repository provides an automated, dynamic solution to turn your standard **
 
 ---
 
-### Easy Installation
+### Manual Installation
+
+If you prefer to download the files and run them manually:
 
 1. Open a PowerShell prompt with **Administrator privileges** (Right-click -> Run as Administrator).
 2. Clone this repository or download the files.
