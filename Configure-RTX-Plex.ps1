@@ -1,6 +1,10 @@
 # Configure-RTX-Plex.ps1
-# PowerShell script to fully configure RTX Video Super Resolution (VSR) and RTX HDR (SDR-to-HDR) for Plex Player applications.
+# PowerShell script to fully configure or uninstall RTX Video Super Resolution (VSR) and RTX HDR (SDR-to-HDR) for Plex Player applications.
 # Supports both Plex HTPC and Plex for Windows.
+
+param(
+    [switch]$Uninstall
+)
 
 # ---------------------------------------------------------
 # Helper: Logging/Formatting
@@ -26,30 +30,10 @@ function Write-Log {
 # ---------------------------------------------------------
 $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
 if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
-    Write-Log "This script requires Administrator privileges to swap DLLs in Program Files." -Level ERROR
+    Write-Log "This script requires Administrator privileges to edit/restore DLLs in Program Files." -Level ERROR
     Write-Log "Please restart PowerShell as Administrator and run the script again." -Level ERROR
     Exit 1
 }
-
-# ---------------------------------------------------------
-# Hardware and Environment Verification
-# ---------------------------------------------------------
-Write-Log "Starting environment diagnostics..." -Level INFO
-
-# Verify Nvidia GPU
-$gpuQuery = Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue
-$nvidiaGpu = $gpuQuery | Where-Object { $_.Name -like "*NVIDIA*" -or $_.AdapterCompatibility -like "*NVIDIA*" }
-
-if ($null -eq $nvidiaGpu) {
-    Write-Log "No NVIDIA GPU detected on this system. RTX features require an NVIDIA RTX 20-series GPU or newer." -Level WARNING
-} else {
-    Write-Log "Found NVIDIA GPU: $($nvidiaGpu.Name)" -Level SUCCESS
-}
-
-# Verify Windows HDR State (RTX Video HDR requires system-level HDR to be enabled)
-# Since the sandbox or some displays may not have HDR, we report it but do not exit
-$hdrStatus = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue
-Write-Log "RTX Video HDR requires 'Use HDR' to be toggled ON in Windows 11 Display settings." -Level INFO
 
 # ---------------------------------------------------------
 # Locate Plex Directories and Configuration Folders
@@ -78,16 +62,106 @@ foreach ($appName in $plexInstallDirs.Keys) {
             ConfigDir = $configDir
             DllPath = Join-Path $installDir "libmpv-2.dll"
         }
-    } else {
-        Write-Log "$appName is not installed in the default location ('$installDir'). Skipping." -Level INFO
     }
 }
 
 if ($activePlexApps.Count -eq 0) {
     Write-Log "No compatible Plex players (Plex HTPC or Plex for Windows) were found in default Program Files paths." -Level ERROR
-    Write-Log "Please install Plex HTPC or Plex for Windows first." -Level ERROR
     Exit 1
 }
+
+# ---------------------------------------------------------
+# EXECUTE UNINSTALLATION LOGIC IF SPECIFIED
+# ---------------------------------------------------------
+if ($Uninstall) {
+    Write-Log "=========================================================" -Level WARNING
+    Write-Log "Starting Uninstallation & Restore of Plex modifications..." -Level WARNING
+    Write-Log "=========================================================" -Level WARNING
+
+    foreach ($app in $activePlexApps) {
+        Write-Log "Restoring defaults for $($app.Name)..." -Level INFO
+
+        # Stop active Plex processes to release locks on DLLs
+        Write-Log "Stopping running processes of $($app.Name) to release file locks..." -Level INFO
+        Stop-Process -Name ($app.Name -replace " ", "") -Force -ErrorAction SilentlyContinue
+        Start-Sleep -Seconds 2
+
+        # 1. Restore DLL Backup
+        $backupDll = $app.DllPath + ".bak"
+        if (Test-Path $backupDll) {
+            Write-Log "Found original DLL backup at '$backupDll'. Restoring..." -Level SUCCESS
+            try {
+                Copy-Item -Path $backupDll -Destination $app.DllPath -Force
+                Remove-Item -Path $backupDll -Force -ErrorAction SilentlyContinue
+                Write-Log "Successfully restored original libmpv-2.dll." -Level SUCCESS
+            } catch {
+                Write-Log "Failed to restore original DLL: $_" -Level ERROR
+            }
+        } else {
+            Write-Log "No original DLL backup file found at '$backupDll'. Cannot revert libmpv-2.dll automatically." -Level WARNING
+        }
+
+        # 2. Restore/Remove mpv.conf
+        $mpvConfPath = Join-Path $app.ConfigDir "mpv.conf"
+        $backupConf = $mpvConfPath + ".bak"
+
+        if (Test-Path $backupConf) {
+            Write-Log "Found original mpv.conf backup at '$backupConf'. Restoring..." -Level SUCCESS
+            try {
+                Copy-Item -Path $backupConf -Destination $mpvConfPath -Force
+                Remove-Item -Path $backupConf -Force -ErrorAction SilentlyContinue
+                Write-Log "Successfully restored original mpv.conf." -Level SUCCESS
+            } catch {
+                Write-Log "Failed to restore original mpv.conf: $_" -Level ERROR
+            }
+        } elseif (Test-Path $mpvConfPath) {
+            Write-Log "No original mpv.conf backup was found. Deleting custom RTX mpv.conf..." -Level WARNING
+            try {
+                Remove-Item -Path $mpvConfPath -Force
+                Write-Log "Custom RTX mpv.conf removed successfully." -Level SUCCESS
+            } catch {
+                Write-Log "Failed to delete mpv.conf: $_" -Level ERROR
+            }
+        }
+
+        # 3. Delete autovsr_rtxhdr.lua script
+        $luaPath = Join-Path (Join-Path $app.ConfigDir "scripts") "autovsr_rtxhdr.lua"
+        if (Test-Path $luaPath) {
+            Write-Log "Removing dynamic Lua script 'autovsr_rtxhdr.lua'..." -Level INFO
+            try {
+                Remove-Item -Path $luaPath -Force
+                Write-Log "Successfully removed autovsr_rtxhdr.lua script." -Level SUCCESS
+            } catch {
+                Write-Log "Failed to delete Lua script: $_" -Level ERROR
+            }
+        }
+    }
+
+    Write-Log "=========================================================" -Level SUCCESS
+    Write-Log "Uninstallation completed successfully! Plex defaults restored." -Level SUCCESS
+    Write-Log "=========================================================" -Level SUCCESS
+    Exit 0
+}
+
+# ---------------------------------------------------------
+# Hardware and Environment Verification (Only during installation)
+# ---------------------------------------------------------
+Write-Log "Starting environment diagnostics..." -Level INFO
+
+# Verify Nvidia GPU
+$gpuQuery = Get-CimInstance -ClassName Win32_VideoController -ErrorAction SilentlyContinue
+$nvidiaGpu = $gpuQuery | Where-Object { $_.Name -like "*NVIDIA*" -or $_.AdapterCompatibility -like "*NVIDIA*" }
+
+if ($null -eq $nvidiaGpu) {
+    Write-Log "No NVIDIA GPU detected on this system. RTX features require an NVIDIA RTX 20-series GPU or newer." -Level WARNING
+} else {
+    Write-Log "Found NVIDIA GPU: $($nvidiaGpu.Name)" -Level SUCCESS
+}
+
+# Verify Windows HDR State (RTX Video HDR requires system-level HDR to be enabled)
+# Since the sandbox or some displays may not have HDR, we report it but do not exit
+$hdrStatus = Get-CimInstance -Namespace root\wmi -ClassName WmiMonitorBasicDisplayParams -ErrorAction SilentlyContinue
+Write-Log "RTX Video HDR requires 'Use HDR' to be toggled ON in Windows 11 Display settings." -Level INFO
 
 # ---------------------------------------------------------
 # Step 1: Upgrading libmpv-2.dll (Mitzsch mpv-winbuild)
@@ -143,8 +217,10 @@ try {
                 # Backup current dll
                 if (Test-Path $app.DllPath) {
                     $backupPath = $app.DllPath + ".bak"
-                    Write-Log "Creating backup of the old DLL: '$backupPath'" -Level INFO
-                    Copy-Item -Path $app.DllPath -Destination $backupPath -Force
+                    if (-not (Test-Path $backupPath)) {
+                        Write-Log "Creating backup of the old DLL: '$backupPath'" -Level INFO
+                        Copy-Item -Path $app.DllPath -Destination $backupPath -Force
+                    }
                 }
 
                 # Copy updated dll
@@ -180,8 +256,10 @@ foreach ($app in $activePlexApps) {
     # Check if mpv.conf already exists, if so back it up
     if (Test-Path $mpvConfPath) {
         $backupConf = $mpvConfPath + ".bak"
-        Write-Log "Backing up existing mpv.conf to '$backupConf'..." -Level INFO
-        Copy-Item -Path $mpvConfPath -Destination $backupConf -Force
+        if (-not (Test-Path $backupConf)) {
+            Write-Log "Backing up existing mpv.conf to '$backupConf'..." -Level INFO
+            Copy-Item -Path $mpvConfPath -Destination $backupConf -Force
+        }
     }
 
     # Generate perfect mpv.conf contents optimized for RTX Super Resolution and RTX HDR

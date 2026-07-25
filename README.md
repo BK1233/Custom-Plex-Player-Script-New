@@ -19,6 +19,22 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManage
 
 ---
 
+### 🧹 Easy Uninstallation (Revert to Stock Plex)
+
+If you ever need to uninstall these modifications and fully restore your Plex players to their standard, unmodified stock state, open **PowerShell as Administrator** and copy/paste this uninstallation one-liner:
+
+```powershell
+Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12; $cmd = Invoke-RestMethod -Uri "https://raw.githubusercontent.com/BK1233/Custom-Plex-Player-Script-New/main/Configure-RTX-Plex.ps1" -UseBasicParsing; Invoke-Expression "& { $cmd } -Uninstall"
+```
+
+This will automatically:
+- Stop any running Plex player instances.
+- Restore your original, backup stock `libmpv-2.dll` library.
+- Restore your original `mpv.conf` (or safely delete the custom profile if you didn't have one previously).
+- Delete the dynamic Lua configuration scripts from your AppData directory.
+
+---
+
 ### Features & Dynamic Automation
 
 - **`autovsr_rtxhdr.lua`**:
@@ -54,10 +70,11 @@ Set-ExecutionPolicy Bypass -Scope Process -Force; [System.Net.ServicePointManage
 
 ---
 
-### Manual Installation
+### Manual Installation & Uninstallation
 
-If you prefer to download the files and run them manually:
+If you prefer to work with the repository files manually:
 
+**To Install**:
 1. Open a PowerShell prompt with **Administrator privileges** (Right-click -> Run as Administrator).
 2. Clone this repository or download the files.
 3. Navigate to the repository directory and execute the setup utility:
@@ -65,4 +82,9 @@ If you prefer to download the files and run them manually:
    Set-ExecutionPolicy Bypass -Scope Process -Force
    .\Configure-RTX-Plex.ps1
    ```
-4. Start your **Plex HTPC** or **Plex for Windows** player, play any standard content, and enjoy the AI-powered upscaling and HDR expansion!
+
+**To Uninstall**:
+Execute the script using the `-Uninstall` switch:
+```powershell
+.\Configure-RTX-Plex.ps1 -Uninstall
+```
